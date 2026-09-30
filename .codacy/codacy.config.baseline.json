@@ -1,0 +1,578 @@
+{
+  "version": 1,
+  "metadata": {
+    "source": "auto",
+    "provider": null,
+    "organization": null,
+    "repositoryId": null,
+    "repositoryName": null,
+    "createdAt": "2026-09-30T14:13:38.860Z",
+    "updatedAt": "2026-09-30T14:13:38.860Z",
+    "languages": [
+      "JSON",
+      "Markdown"
+    ]
+  },
+  "tools": [
+    {
+      "toolId": "jackson",
+      "patterns": [
+        {
+          "patternId": "jackson_duplicate-keys"
+        },
+        {
+          "patternId": "jackson_parse-error"
+        }
+      ]
+    },
+    {
+      "toolId": "markdownlint",
+      "patterns": [
+        {
+          "patternId": "markdownlint_MD001"
+        },
+        {
+          "patternId": "markdownlint_MD003"
+        },
+        {
+          "patternId": "markdownlint_MD004"
+        },
+        {
+          "patternId": "markdownlint_MD005"
+        },
+        {
+          "patternId": "markdownlint_MD007"
+        },
+        {
+          "patternId": "markdownlint_MD010"
+        },
+        {
+          "patternId": "markdownlint_MD011"
+        },
+        {
+          "patternId": "markdownlint_MD012"
+        },
+        {
+          "patternId": "markdownlint_MD014"
+        },
+        {
+          "patternId": "markdownlint_MD018"
+        },
+        {
+          "patternId": "markdownlint_MD019"
+        },
+        {
+          "patternId": "markdownlint_MD020"
+        },
+        {
+          "patternId": "markdownlint_MD021"
+        },
+        {
+          "patternId": "markdownlint_MD022"
+        },
+        {
+          "patternId": "markdownlint_MD023"
+        },
+        {
+          "patternId": "markdownlint_MD024"
+        },
+        {
+          "patternId": "markdownlint_MD025"
+        },
+        {
+          "patternId": "markdownlint_MD026"
+        },
+        {
+          "patternId": "markdownlint_MD027"
+        },
+        {
+          "patternId": "markdownlint_MD028"
+        },
+        {
+          "patternId": "markdownlint_MD029"
+        },
+        {
+          "patternId": "markdownlint_MD030"
+        },
+        {
+          "patternId": "markdownlint_MD032"
+        },
+        {
+          "patternId": "markdownlint_MD033"
+        },
+        {
+          "patternId": "markdownlint_MD034"
+        },
+        {
+          "patternId": "markdownlint_MD035"
+        },
+        {
+          "patternId": "markdownlint_MD036"
+        },
+        {
+          "patternId": "markdownlint_MD037"
+        },
+        {
+          "patternId": "markdownlint_MD038"
+        },
+        {
+          "patternId": "markdownlint_MD039"
+        },
+        {
+          "patternId": "markdownlint_MD042"
+        },
+        {
+          "patternId": "markdownlint_MD044"
+        },
+        {
+          "patternId": "markdownlint_MD045"
+        },
+        {
+          "patternId": "markdownlint_MD046"
+        },
+        {
+          "patternId": "markdownlint_MD048"
+        },
+        {
+          "patternId": "markdownlint_MD049"
+        },
+        {
+          "patternId": "markdownlint_MD050"
+        },
+        {
+          "patternId": "markdownlint_MD051"
+        },
+        {
+          "patternId": "markdownlint_MD052"
+        },
+        {
+          "patternId": "markdownlint_MD053"
+        },
+        {
+          "patternId": "markdownlint_MD054"
+        },
+        {
+          "patternId": "markdownlint_MD055"
+        },
+        {
+          "patternId": "markdownlint_MD056"
+        }
+      ]
+    },
+    {
+      "toolId": "Semgrep",
+      "patterns": [
+        {
+          "patternId": "Semgrep_generic.secrets.security.detected-onfido-live-api-token.detected-onfido-live-api-token"
+        },
+        {
+          "patternId": "Semgrep_generic.secrets.security.detected-stripe-restricted-api-key.detected-stripe-restricted-api-key"
+        },
+        {
+          "patternId": "Semgrep_generic.secrets.security.detected-username-and-password-in-uri.detected-username-and-password-in-uri"
+        },
+        {
+          "patternId": "Semgrep_generic.secrets.security.google-maps-apikeyleak.google-maps-apikeyleak"
+        },
+        {
+          "patternId": "Semgrep_json.aws.security.public-s3-bucket.public-s3-bucket"
+        },
+        {
+          "patternId": "Semgrep_json.aws.security.public-s3-policy-statement.public-s3-policy-statement"
+        },
+        {
+          "patternId": "Semgrep_json.aws.security.wildcard-assume-role.wildcard-assume-role"
+        }
+      ]
+    },
+    {
+      "toolId": "spectral",
+      "patterns": [
+        {
+          "patternId": "spectral_asyncapi-3-channel-no-empty-parameter"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-channel-no-query-nor-fragment"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-channel-no-trailing-slash"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-document-resolved"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-document-unresolved"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-headers-schema-type-object"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-operation-description"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-operation-security"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-payload-unsupported-schemaFormat"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-server-no-empty-variable"
+        },
+        {
+          "patternId": "spectral_asyncapi-channel-no-empty-parameter"
+        },
+        {
+          "patternId": "spectral_asyncapi-channel-no-query-nor-fragment"
+        },
+        {
+          "patternId": "spectral_asyncapi-channel-no-trailing-slash"
+        },
+        {
+          "patternId": "spectral_asyncapi-channel-parameters"
+        },
+        {
+          "patternId": "spectral_asyncapi-headers-schema-type-object"
+        },
+        {
+          "patternId": "spectral_asyncapi-latest-version"
+        },
+        {
+          "patternId": "spectral_asyncapi-operation-description"
+        },
+        {
+          "patternId": "spectral_asyncapi-operation-operationId"
+        },
+        {
+          "patternId": "spectral_asyncapi-operation-security"
+        },
+        {
+          "patternId": "spectral_asyncapi-payload"
+        },
+        {
+          "patternId": "spectral_asyncapi-payload-unsupported-schemaFormat"
+        },
+        {
+          "patternId": "spectral_asyncapi-schema"
+        },
+        {
+          "patternId": "spectral_asyncapi-schema-default"
+        },
+        {
+          "patternId": "spectral_asyncapi-schema-examples"
+        },
+        {
+          "patternId": "spectral_asyncapi-server-no-empty-variable"
+        },
+        {
+          "patternId": "spectral_asyncapi-servers"
+        },
+        {
+          "patternId": "spectral_asyncapi-server-security"
+        },
+        {
+          "patternId": "spectral_asyncapi-server-variables"
+        },
+        {
+          "patternId": "spectral_asyncapi-unused-components-schema"
+        },
+        {
+          "patternId": "spectral_asyncapi-unused-components-server"
+        },
+        {
+          "patternId": "spectral_no-eval-in-markdown"
+        },
+        {
+          "patternId": "spectral_no-script-tags-in-markdown"
+        },
+        {
+          "patternId": "spectral_oas2-anyOf"
+        },
+        {
+          "patternId": "spectral_oas2-api-host"
+        },
+        {
+          "patternId": "spectral_oas2-api-schemes"
+        },
+        {
+          "patternId": "spectral_oas2-discriminator"
+        },
+        {
+          "patternId": "spectral_oas2-host-trailing-slash"
+        },
+        {
+          "patternId": "spectral_oas2-oneOf"
+        },
+        {
+          "patternId": "spectral_oas2-operation-formData-consume-check"
+        },
+        {
+          "patternId": "spectral_oas2-operation-security-defined"
+        },
+        {
+          "patternId": "spectral_oas2-schema"
+        },
+        {
+          "patternId": "spectral_oas2-unused-definition"
+        },
+        {
+          "patternId": "spectral_oas2-valid-media-example"
+        },
+        {
+          "patternId": "spectral_oas2-valid-schema-example"
+        },
+        {
+          "patternId": "spectral_oas3-api-servers"
+        },
+        {
+          "patternId": "spectral_oas3-callbacks-in-callbacks"
+        },
+        {
+          "patternId": "spectral_oas3-operation-security-defined"
+        },
+        {
+          "patternId": "spectral_oas3-schema"
+        },
+        {
+          "patternId": "spectral_oas3-unused-component"
+        },
+        {
+          "patternId": "spectral_operation-description"
+        },
+        {
+          "patternId": "spectral_operation-operationId"
+        },
+        {
+          "patternId": "spectral_operation-parameters"
+        },
+        {
+          "patternId": "spectral_operation-success-response"
+        },
+        {
+          "patternId": "spectral_operation-tag-defined"
+        },
+        {
+          "patternId": "spectral_operation-tags"
+        },
+        {
+          "patternId": "spectral_path-declarations-must-exist"
+        },
+        {
+          "patternId": "spectral_path-keys-no-trailing-slash"
+        },
+        {
+          "patternId": "spectral_path-not-include-query"
+        },
+        {
+          "patternId": "spectral_path-params"
+        }
+      ]
+    },
+    {
+      "toolId": "Checkov",
+      "patterns": [
+        {
+          "patternId": "Checkov_CKV_BITBUCKET_1"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_1"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_10"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_11"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_12"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_13"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_14"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_15"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_16"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_17"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_18"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_19"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_2"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_20"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_21"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_22"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_23"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_26"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_27"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_28"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_3"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_4"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_5"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_6"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_7"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_8"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_9"
+        },
+        {
+          "patternId": "Checkov_CKV_GITLAB_1"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_1"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_10"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_11"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_12"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_13"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_14"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_15"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_16"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_17"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_18"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_19"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_2"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_20"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_21"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_3"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_4"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_5"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_6"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_7"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_8"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_9"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_1"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_11"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_12"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_13"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_14"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_15"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_16"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_17"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_18"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_19"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_2"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_3"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_4"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_5"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_6"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_7"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_8"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_9"
+        }
+      ]
+    }
+  ],
+  "exclude": []
+}

@@ -1,0 +1,24 @@
+# Copy to terraform.tfvars and adjust. Run from the management account (or an
+# Organizations delegated administrator for policy management).
+
+# Start with a sandbox/test OU before attaching to the organization root.
+target_ids = ["ou-xxxx-xxxxxxxx"]
+
+# Stage the rollout by trimming this list. Defaults to all nine controls.
+# enabled_controls = ["CT.S3.PV.5", "CT.KMS.PV.7"]
+
+# Other organizations whose principals may reach your KMS/S3/Secrets Manager/SQS/STS resources.
+# additional_trusted_organization_ids = ["o-xxxxxxxxxx"]
+
+# Per-control exemptions (ArnNotLike on aws:PrincipalArn; wildcards allowed).
+# exempted_principal_arns = {
+#   "CT.STS.PV.1" = ["arn:aws:iam::*:role/ThirdPartyIntegrationRole"]
+#   "CT.S3.PV.2"  = ["arn:aws:iam::*:role/PresignedUrlGenerator"]
+# }
+
+# Buckets/objects allowed to receive uploads without SSE-KMS (CT.S3.PV.6).
+# s3_sse_kms_exempted_resource_arns = ["arn:aws:s3:::legacy-bucket/*"]
+
+tags = {
+  ManagedBy = "terraform"
+}
