@@ -307,7 +307,7 @@ Use an existing organization trail delivered to S3 and an Athena table, or an ex
 
 CloudTrail data events have additional charges. Event delivery is not instantaneous. Some services may not emit a CloudTrail record for every request denied by an organization policy, and error messages differ by service. The queries below show recorded successes and failures; they are not proof that an absent request was allowed or denied.
 
-For an Athena table using the standard CloudTrail schema, set the lab time range, target account, and table name in the queries. A baseline success usually has `errorCode IS NULL`; a recorded failure has `errorCode IS NOT NULL`. An RCP denial may include “resource control policy” in `errorMessage`, but do not require that exact wording.
+For an Athena table using the standard CloudTrail schema, set the target account and table name in the queries. The queries cover the past 24 hours. If your baseline probes ran earlier than that, widen the interval (for example `INTERVAL '48' HOUR`) so the before-and-after comparison still includes the baseline rows. A baseline success usually has `errorCode IS NULL`; a recorded failure has `errorCode IS NOT NULL`. An RCP denial may include “resource control policy” in `errorMessage`, but do not require that exact wording.
 
 ### Cross-account service and STS activity
 
@@ -327,7 +327,7 @@ SELECT
   errorMessage,
   requestParameters
 FROM cloudtrail_logs.organization_events
-WHERE eventTime >= '2026-09-30T00:00:00Z'
+WHERE eventTime >= to_iso8601(current_timestamp - INTERVAL '24' HOUR)
   AND recipientAccountId = '111122223333'
   AND userIdentity.accountId = '444455556666'
   AND eventSource IN (
@@ -361,7 +361,7 @@ SELECT
   COALESCE(errorCode, 'ALLOWED') AS result,
   errorMessage
 FROM cloudtrail_logs.organization_events
-WHERE eventTime >= '2026-09-30T00:00:00Z'
+WHERE eventTime >= to_iso8601(current_timestamp - INTERVAL '24' HOUR)
   AND recipientAccountId = '111122223333'
   AND eventSource = 's3.amazonaws.com'
   AND json_extract_scalar(requestParameters, '$.bucketName') = 'REPLACE_WITH_LAB_BUCKET'

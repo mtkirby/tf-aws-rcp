@@ -467,14 +467,14 @@ SELECT
   errorCode,
   errorMessage
 FROM cloudtrail_logs.organization_events
-WHERE eventTime >= '2026-09-30T00:00:00Z'
+WHERE eventTime >= to_iso8601(current_timestamp - INTERVAL '7' DAY)
   AND recipientAccountId IN ('111122223333', '444455556666')
   AND errorMessage LIKE '%resource control policy%'
 ORDER BY eventTime DESC
 LIMIT 1000;
 ```
 
-Set the start time to when the policies were attached. Match each denial to a control by the event source and the checks above, then either fix the caller or add a targeted exemption.
+This covers the past 7 days. Only an RCP produces this denial message, so a window that reaches back before the attachment finds nothing extra; it only scans more data. Widen the interval to look further back, or use a fixed start such as `eventTime >= '2026-09-30T00:00:00Z'` to begin exactly at the attachment time. Match each denial to a control by the event source and the checks above, then either fix the caller or add a targeted exemption.
 
 ## Review and report
 

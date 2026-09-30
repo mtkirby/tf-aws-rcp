@@ -327,7 +327,7 @@ Before the RCP, the external account's rows show `ALLOWED`. After, the same call
 
 ### Athena (management and data events)
 
-Show both outcomes for the external principal side by side. Replace the table name, date range, and account IDs.
+Show both outcomes for the external principal side by side. Replace the table name and account IDs. The queries cover the past 24 hours; if you ran the baseline in section 3 earlier than that, widen the interval (for example `INTERVAL '48' HOUR`) so the `ALLOWED` rows are still included.
 
 ```sql
 SELECT
@@ -339,7 +339,7 @@ SELECT
   COALESCE(errorCode, 'ALLOWED') AS result,
   errorMessage
 FROM cloudtrail_logs.organization_events
-WHERE eventTime >= '2026-09-30T00:00:00Z'
+WHERE eventTime >= to_iso8601(current_timestamp - INTERVAL '24' HOUR)
   AND recipientAccountId = '123456789012'          -- resource account
   AND userIdentity.accountId = '999988887777'      -- external account
   AND eventSource IN (
@@ -354,7 +354,7 @@ Rows before the attachment time read `ALLOWED`; rows after read `AccessDenied`. 
 ```sql
 SELECT eventTime, eventSource, eventName, userIdentity.arn AS principal_arn, errorMessage
 FROM cloudtrail_logs.organization_events
-WHERE eventTime >= '2026-09-30T00:00:00Z'
+WHERE eventTime >= to_iso8601(current_timestamp - INTERVAL '24' HOUR)
   AND recipientAccountId = '123456789012'
   AND errorMessage LIKE '%resource control policy%'
 ORDER BY eventTime DESC;
