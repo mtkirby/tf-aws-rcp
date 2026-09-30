@@ -42,13 +42,19 @@ CloudTrail Lake SQL is an option only for organizations that already have CloudT
 
 ## 1. Search management events with AWS CLI
 
-Choose the target Regions and UTC review window. Repeat the lookup in each target account and Region. `lookup-events` accepts only one lookup attribute at a time, so run one command per event source. AWS CLI automatically paginates unless pagination is disabled.
+Choose the target Regions. The review window defaults to the past 90 days, which is as far back as Event history goes. Repeat the lookup in each target account and Region. `lookup-events` accepts only one lookup attribute at a time, so run one command per event source. AWS CLI automatically paginates unless pagination is disabled.
 
 ```sh
 PROFILE=security-audit
 REGION=us-east-1
-START_TIME=2026-09-01T00:00:00Z
-END_TIME=2026-09-30T00:00:00Z
+# Past 90 days to now, in UTC. macOS (BSD date) and Linux (GNU date) use different flags.
+# For a fixed window instead, set both to literal values, e.g. START_TIME=2026-09-01T00:00:00Z.
+if [ "$(uname -s)" = "Darwin" ]; then
+  START_TIME=$(date -u -v-90d +%Y-%m-%dT%H:%M:%SZ)
+else
+  START_TIME=$(date -u -d '90 days ago' +%Y-%m-%dT%H:%M:%SZ)
+fi
+END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 for SOURCE in \
   kms.amazonaws.com \
@@ -76,7 +82,7 @@ To check one control at a time, with results labeled by caller location and outc
 
 ## 2. Query S3 and SQS data events with Athena
 
-Set these values for an existing Athena table over the organization's CloudTrail S3 logs. The table should use the standard CloudTrail event schema, including `userIdentity`, `tlsDetails`, `requestParameters`, and `additionalEventData`. Set the date range and target account IDs in each query. Keep the window narrow to control scan cost.
+Set these values for an existing Athena table over the organization's CloudTrail S3 logs. The table should use the standard CloudTrail event schema, including `userIdentity`, `tlsDetails`, `requestParameters`, and `additionalEventData`. Set the target account IDs in each query. The queries cover the past 90 days by default. Athena charges by data scanned, so shorten the interval (for example `INTERVAL '30' DAY`) to control cost. For a fixed window, replace the line with `eventTime >= '2026-09-01T00:00:00Z' AND eventTime < '2026-09-30T00:00:00Z'`. If your table uses partition projection, also filter on its date partition column; otherwise Athena scans every partition regardless of `eventTime`.
 
 ```sh
 ATHENA_DATABASE=cloudtrail_logs
@@ -128,8 +134,7 @@ SELECT
   errorCode,
   COUNT(*) AS event_count
 FROM cloudtrail_logs.organization_events
-WHERE eventTime >= '2026-09-01T00:00:00Z'
-  AND eventTime <  '2026-09-30T00:00:00Z'
+WHERE eventTime >= to_iso8601(current_timestamp - INTERVAL '90' DAY)
   AND recipientAccountId IN ('111122223333', '444455556666')
   AND eventSource IN (
     'kms.amazonaws.com',
@@ -170,8 +175,7 @@ SELECT
   requestParameters,
   additionalEventData
 FROM cloudtrail_logs.organization_events
-WHERE eventTime >= '2026-09-01T00:00:00Z'
-  AND eventTime <  '2026-09-30T00:00:00Z'
+WHERE eventTime >= to_iso8601(current_timestamp - INTERVAL '90' DAY)
   AND recipientAccountId IN ('111122223333', '444455556666')
   AND eventSource = 's3.amazonaws.com'
   AND eventCategory = 'Data'
@@ -215,8 +219,7 @@ SELECT
   errorCode,
   errorMessage
 FROM cloudtrail_logs.organization_events
-WHERE eventTime >= '2026-09-01T00:00:00Z'
-  AND eventTime <  '2026-09-30T00:00:00Z'
+WHERE eventTime >= to_iso8601(current_timestamp - INTERVAL '90' DAY)
   AND recipientAccountId IN ('111122223333', '444455556666')
   AND eventSource = 'sqs.amazonaws.com'
   AND eventCategory = 'Data'
@@ -324,7 +327,7 @@ How to read the results:
 
 ### S3 request controls (Athena)
 
-These controls apply to object requests, which are data events, so they need Athena and the S3 data events that section 2 describes. Run each query with the `aws athena start-query-execution` commands from section 2. Set the date range and target account IDs in each query, and replace `cloudtrail_logs.organization_events` with your table name.
+These controls apply to object requests, which are data events, so they need Athena and the S3 data events that section 2 describes. Run each query with the `aws athena start-query-execution` commands from section 2. Set the target account IDs in each query (the window defaults to the past 90 days, as in section 2), and replace `cloudtrail_logs.organization_events` with your table name.
 
 **CT.S3.PV.4**: object requests from callers outside the organization. To build the account list for the `NOT IN` clause, run:
 
@@ -343,8 +346,7 @@ SELECT
   COALESCE(errorCode, 'ALLOWED') AS result,
   errorMessage
 FROM cloudtrail_logs.organization_events
-WHERE eventTime >= '2026-09-01T00:00:00Z'
-  AND eventTime <  '2026-09-30T00:00:00Z'
+WHERE eventTime >= to_iso8601(current_timestamp - INTERVAL '90' DAY)
   AND recipientAccountId IN ('111122223333', '444455556666')
   AND eventSource = 's3.amazonaws.com'
   AND userIdentity.type <> 'AWSService'
@@ -366,8 +368,7 @@ SELECT
   COALESCE(errorCode, 'ALLOWED') AS result,
   errorMessage
 FROM cloudtrail_logs.organization_events
-WHERE eventTime >= '2026-09-01T00:00:00Z'
-  AND eventTime <  '2026-09-30T00:00:00Z'
+WHERE eventTime >= to_iso8601(current_timestamp - INTERVAL '90' DAY)
   AND recipientAccountId IN ('111122223333', '444455556666')
   AND eventSource = 's3.amazonaws.com'
   AND COALESCE(json_extract_scalar(additionalEventData, '$.AuthenticationMethod'), 'none') <> 'AuthHeader'
@@ -386,8 +387,7 @@ SELECT
   COALESCE(errorCode, 'ALLOWED') AS result,
   COUNT(*) AS event_count
 FROM cloudtrail_logs.organization_events
-WHERE eventTime >= '2026-09-01T00:00:00Z'
-  AND eventTime <  '2026-09-30T00:00:00Z'
+WHERE eventTime >= to_iso8601(current_timestamp - INTERVAL '90' DAY)
   AND recipientAccountId IN ('111122223333', '444455556666')
   AND eventSource = 's3.amazonaws.com'
   AND tlsDetails.tlsVersion IS NOT NULL
@@ -411,8 +411,7 @@ SELECT
   COALESCE(errorCode, 'ALLOWED') AS result,
   COUNT(*) AS event_count
 FROM cloudtrail_logs.organization_events
-WHERE eventTime >= '2026-09-01T00:00:00Z'
-  AND eventTime <  '2026-09-30T00:00:00Z'
+WHERE eventTime >= to_iso8601(current_timestamp - INTERVAL '90' DAY)
   AND recipientAccountId IN ('111122223333', '444455556666')
   AND eventSource = 's3.amazonaws.com'
   AND tlsDetails.tlsVersion IS NULL
@@ -434,8 +433,7 @@ SELECT
   COALESCE(errorCode, 'ALLOWED') AS result,
   COUNT(*) AS event_count
 FROM cloudtrail_logs.organization_events
-WHERE eventTime >= '2026-09-01T00:00:00Z'
-  AND eventTime <  '2026-09-30T00:00:00Z'
+WHERE eventTime >= to_iso8601(current_timestamp - INTERVAL '90' DAY)
   AND recipientAccountId IN ('111122223333', '444455556666')
   AND eventSource = 's3.amazonaws.com'
   AND eventName IN ('PutObject', 'CreateMultipartUpload')
