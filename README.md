@@ -24,6 +24,32 @@ A root, OU or account can have at most **5 RCPs** attached, and `RCPFullAWSAcces
 
 The optional attachment-capacity preflight checks the saved plan against the RCPs currently attached directly to each changed target. It requires Python 3.10+ and AWS CLI credentials with permission to call `organizations:ListPoliciesForTarget`. It cannot prevent a concurrent process from attaching another RCP after the check, so serialize organization-policy applies.
 
+## What each control does
+
+**Identity perimeter.** These five controls deny requests from principals outside your organization, unless the principal is an AWS service. They stop other AWS accounts from reaching your resources, even when a resource policy grants them access by mistake. Add partner organizations with `additional_trusted_organization_ids`.
+
+- **CT.KMS.PV.7**: blocks all KMS operations on your keys by identities outside the organization, so no external account can encrypt, decrypt or manage them.
+  *Why:* KMS keys protect your other data, so a key policy that trusts the wrong account exposes everything encrypted with that key. This control stops that.
+- **CT.S3.PV.4**: blocks all S3 operations on your buckets and objects by identities outside the organization.
+  *Why:* bucket policies that grant access to other accounts are a common cause of data exposure. This makes an org-wide guardrail that bucket owners can't override.
+- **CT.SECRETSMANAGER.PV.1**: blocks all Secrets Manager operations on your secrets by identities outside the organization.
+  *Why:* secrets hold credentials, so one leaked secret can open access to databases and other systems. This keeps secrets inside the organization even if a secret's resource policy is too broad.
+- **CT.SQS.PV.1**: blocks all SQS operations on your queues by identities outside the organization, including sending and receiving messages.
+  *Why:* an outside account with queue access could read or delete your messages, or inject fake ones into the workflows that consume the queue.
+- **CT.STS.PV.1**: blocks identities outside the organization from assuming your IAM roles (`sts:AssumeRole`) or setting trusted context (`sts:SetContext`). SAML and web identity federation are not affected.
+  *Why:* a role trust policy that names the wrong account, or trusts any account, gives an outsider a way into your environment. This closes that path across every account at once.
+
+**S3 data protection.** These four controls set request requirements for every S3 bucket in the target accounts.
+
+- **CT.S3.PV.2**: requires requests to be signed with an `Authorization` header. This rules out presigned URLs and browser POST uploads.
+  *Why:* anyone who has a presigned URL can use it until it expires. A URL that leaks through logs, chat or email therefore exposes the object with no further identity check.
+- **CT.S3.PV.3**: requires TLS 1.3 or later on every request.
+  *Why:* TLS 1.3 drops the older cipher suites and handshake options found in earlier versions, and some compliance standards require it.
+- **CT.S3.PV.5**: requires HTTPS on every request (`aws:SecureTransport`).
+  *Why:* over plain HTTP, object data travels unencrypted and can be read or altered in transit. Frameworks such as PCI DSS and HIPAA expect encryption in transit.
+- **CT.S3.PV.6**: requires object uploads to use SSE-KMS encryption. An upload must specify a KMS key or go to a bucket whose default encryption is SSE-KMS.
+  *Why:* SSE-KMS adds a second permission check, because reading an object also needs `kms:Decrypt` on the key. CloudTrail logs every use of the key, and disabling the key cuts off access to the data.
+
 ## Prerequisites
 
 - Run from the **management account**, or from an account that is a delegated administrator for Organizations policy management.
