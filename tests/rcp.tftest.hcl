@@ -173,6 +173,16 @@ run "rejects_bad_target" {
   expect_failures = [var.target_ids]
 }
 
+run "rejects_empty_targets" {
+  command = plan
+
+  variables {
+    target_ids = []
+  }
+
+  expect_failures = [var.target_ids]
+}
+
 run "fails_when_rcp_type_disabled" {
   command = plan
 

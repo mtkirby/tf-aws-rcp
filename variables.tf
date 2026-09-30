@@ -9,10 +9,10 @@ variable "target_ids" {
   type        = list(string)
 
   validation {
-    condition = alltrue([
+    condition = length(var.target_ids) > 0 && alltrue([
       for id in var.target_ids : can(regex("^(r-[0-9a-z]{4,32}|ou-[0-9a-z]{4,32}-[0-9a-z]{8,32}|[0-9]{12})$", id))
     ])
-    error_message = "Each target ID must be an organization root ID (r-...), an OU ID (ou-...-...) or a 12-digit account ID."
+    error_message = "Provide at least one target ID, and ensure each is an organization root ID (r-...), an OU ID (ou-...-...) or a 12-digit account ID."
   }
 }
 

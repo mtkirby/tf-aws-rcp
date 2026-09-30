@@ -22,6 +22,8 @@ These are self-managed RCPs created with `aws_organizations_policy`. They are no
 
 A root, OU or account can have at most **5 RCPs** attached, and `RCPFullAWSAccess` takes one of those slots. So the nine controls are packed into two policies, with one statement per control. Each policy must stay under 5,120 characters. The defaults render to about 1.3 KB and 0.6 KB, and a precondition fails the plan if exemptions push a policy over the limit.
 
+The optional attachment-capacity preflight checks the saved plan against the RCPs currently attached directly to each changed target. It requires Python 3.10+ and AWS CLI credentials with permission to call `organizations:ListPoliciesForTarget`. It cannot prevent a concurrent process from attaching another RCP after the check, so serialize organization-policy applies.
+
 ## Prerequisites
 
 - Run from the **management account**, or from an account that is a delegated administrator for Organizations policy management.
@@ -44,9 +46,15 @@ A root, OU or account can have at most **5 RCPs** attached, and `RCPFullAWSAcces
 ```sh
 cp terraform.tfvars.example terraform.tfvars   # set target_ids etc.
 terraform init
-terraform plan
-terraform apply
+terraform fmt -check -recursive
+terraform validate
+terraform test
+terraform plan -out=tfplan
+python3 scripts/check_rcp_attachment_capacity.py tfplan
+terraform apply tfplan
 ```
+
+Pass `--profile PROFILE` to use a named AWS CLI profile. The script exits nonzero if any target would exceed five directly attached RCPs or if it cannot reliably determine the planned capacity.
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -77,3 +85,9 @@ terraform test
 ```
 
 The tests use a mocked AWS provider, so they need no credentials. They check the rendered JSON against the AWS templates, the optional parameter blocks, a partial control set, input validation, and the RCP-enabled precondition.
+
+The attachment-capacity preflight's unit tests use only the Python standard library:
+
+```sh
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
