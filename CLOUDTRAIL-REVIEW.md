@@ -72,6 +72,8 @@ In the STS results, focus on `AssumeRole` and `SetContext`. In all results, insp
 
 Compare the caller's account and principal with the organization and trusted external organizations. A cross-account event is only a candidate: it may be from an account in the same organization, an explicitly trusted organization, or an AWS service. Conversely, not every relevant identity or service-mediated request is represented by a simple account-ID comparison.
 
+To check one control at a time, with results labeled by caller location and outcome, use [section 3](#3-per-control-checks).
+
 ## 2. Query S3 and SQS data events with Athena
 
 Set these values for an existing Athena table over the organization's CloudTrail S3 logs. The table should use the standard CloudTrail event schema, including `userIdentity`, `tlsDetails`, `requestParameters`, and `additionalEventData`. Set the date range and target account IDs in each query. Keep the window narrow to control scan cost.
@@ -226,6 +228,255 @@ WHERE eventTime >= '2026-09-01T00:00:00Z'
 ORDER BY eventTime DESC
 LIMIT 1000;
 ```
+
+## 3. Per-control checks
+
+Use these checks to review one control at a time. Each check lists allowed calls as well as denied ones.
+
+- **Before you attach the RCPs**, the calls that matter are allowed calls from outside the organization. They show integrations that the control will deny once attached.
+- **After you attach the RCPs**, look for new `AccessDenied` errors. See [After rollout: find RCP denials](#after-rollout-find-rcp-denials).
+
+`lookup-events` can only cover the identity-perimeter controls, and only their management events. It returns no S3 object or SQS message data events. It also filters on a single attribute and can't filter by result or caller account. So the commands below pipe its output through `jq`, and the S3 request controls use Athena.
+
+### Setup
+
+Set `PROFILE`, `REGION`, `START_TIME` and `END_TIME` as in section 1. Then save the organization's account IDs. This needs credentials in the management account, or in a delegated administrator account for AWS Organizations:
+
+```sh
+ORG_PROFILE=org-management
+
+aws organizations list-accounts \
+  --profile "$ORG_PROFILE" \
+  --query 'Accounts[].Id' \
+  --output json > org-accounts.json
+```
+
+If you trust other organizations through `additional_trusted_organization_ids`, add their account IDs to `org-accounts.json` if you know them. Otherwise, callers from those accounts show as `OUTSIDE-ORG` and need to be checked by hand.
+
+Define this helper. It runs `lookup-events` with one attribute and prints one tab-separated row per event: time, API action, caller account, `IN-ORG` or `OUTSIDE-ORG`, caller ARN, result (`ALLOWED` or the error code), and the error message. Calls made by AWS services are skipped, because the identity-perimeter controls allow AWS service principals.
+
+```sh
+ct_lookup() {
+  aws cloudtrail lookup-events \
+    --lookup-attributes "AttributeKey=$1,AttributeValue=$2" \
+    --start-time "$START_TIME" \
+    --end-time "$END_TIME" \
+    --region "$REGION" \
+    --profile "$PROFILE" \
+    --query 'Events[].CloudTrailEvent' \
+    --output json |
+  jq -r --slurpfile org org-accounts.json '
+    .[] | fromjson
+    | select(.userIdentity.type != "AWSService")
+    | (.userIdentity.accountId // "") as $acct
+    | [ .eventTime,
+        .eventName,
+        (if $acct == "" then "-" else $acct end),
+        (if any($org[0][]; . == $acct) then "IN-ORG" else "OUTSIDE-ORG" end),
+        (.userIdentity.arn // "-"),
+        (.errorCode // "ALLOWED"),
+        (.errorMessage // "") ]
+    | @tsv'
+}
+```
+
+As in section 1, run each command in every target account and Region. Add `| grep OUTSIDE-ORG` to any command to show only the rows that matter before rollout.
+
+### Identity-perimeter controls (AWS CLI)
+
+**CT.KMS.PV.7**: all KMS calls.
+
+```sh
+ct_lookup EventSource kms.amazonaws.com
+```
+
+**CT.SECRETSMANAGER.PV.1**: all Secrets Manager calls.
+
+```sh
+ct_lookup EventSource secretsmanager.amazonaws.com
+```
+
+**CT.STS.PV.1**: the two actions this control covers. `AssumeRoleWithSAML`, `AssumeRoleWithWebIdentity` and `GetCallerIdentity` are out of scope.
+
+```sh
+for NAME in AssumeRole SetContext; do
+  ct_lookup EventName "$NAME"
+done
+```
+
+**CT.S3.PV.4**: S3 bucket-level management calls only. For object reads and writes, use the CT.S3.PV.4 Athena query below.
+
+```sh
+ct_lookup EventSource s3.amazonaws.com
+```
+
+**CT.SQS.PV.1**: SQS queue-level management calls only. For message calls such as `SendMessage` and `ReceiveMessage`, use the SQS query in section 2 and compare `principal_account_id` with `org-accounts.json`.
+
+```sh
+ct_lookup EventSource sqs.amazonaws.com
+```
+
+How to read the results:
+
+- An `OUTSIDE-ORG` row with `ALLOWED` is a caller the control will deny once attached, unless its organization is trusted or its ARN is in `exempted_principal_arns`.
+- A `-` in the caller account column means CloudTrail recorded no account for the caller, for example an anonymous request. The control denies these too.
+- `IN-ORG` rows are not affected by these controls.
+
+### S3 request controls (Athena)
+
+These controls apply to object requests, which are data events, so they need Athena and the S3 data events that section 2 describes. Run each query with the `aws athena start-query-execution` commands from section 2. Set the date range and target account IDs in each query, and replace `cloudtrail_logs.organization_events` with your table name.
+
+**CT.S3.PV.4**: object requests from callers outside the organization. To build the account list for the `NOT IN` clause, run:
+
+```sh
+jq -r 'map(@sh) | join(", ")' org-accounts.json
+```
+
+```sql
+SELECT
+  eventTime,
+  eventName,
+  recipientAccountId AS resource_account_id,
+  userIdentity.accountId AS principal_account_id,
+  userIdentity.arn AS principal_arn,
+  json_extract_scalar(requestParameters, '$.bucketName') AS bucket_name,
+  COALESCE(errorCode, 'ALLOWED') AS result,
+  errorMessage
+FROM cloudtrail_logs.organization_events
+WHERE eventTime >= '2026-09-01T00:00:00Z'
+  AND eventTime <  '2026-09-30T00:00:00Z'
+  AND recipientAccountId IN ('111122223333', '444455556666')
+  AND eventSource = 's3.amazonaws.com'
+  AND userIdentity.type <> 'AWSService'
+  AND COALESCE(userIdentity.accountId, '') NOT IN ('111122223333', '444455556666')
+ORDER BY eventTime DESC
+LIMIT 1000;
+```
+
+**CT.S3.PV.2**: requests not authenticated with the `Authorization` header. S3 records `additionalEventData.AuthenticationMethod` as `AuthHeader` for header-signed requests and `QueryString` for presigned URLs. Treat any other value, or a missing value, as a candidate and confirm it with the workload owner. CloudTrail may not identify browser POST uploads reliably.
+
+```sql
+SELECT
+  eventTime,
+  eventName,
+  recipientAccountId AS resource_account_id,
+  userIdentity.arn AS principal_arn,
+  json_extract_scalar(requestParameters, '$.bucketName') AS bucket_name,
+  json_extract_scalar(additionalEventData, '$.AuthenticationMethod') AS auth_method,
+  COALESCE(errorCode, 'ALLOWED') AS result,
+  errorMessage
+FROM cloudtrail_logs.organization_events
+WHERE eventTime >= '2026-09-01T00:00:00Z'
+  AND eventTime <  '2026-09-30T00:00:00Z'
+  AND recipientAccountId IN ('111122223333', '444455556666')
+  AND eventSource = 's3.amazonaws.com'
+  AND COALESCE(json_extract_scalar(additionalEventData, '$.AuthenticationMethod'), 'none') <> 'AuthHeader'
+ORDER BY eventTime DESC
+LIMIT 1000;
+```
+
+**CT.S3.PV.3**: requests that used a TLS version older than 1.3. This query skips events with no TLS details; CT.S3.PV.5 covers those.
+
+```sql
+SELECT
+  tlsDetails.tlsVersion AS tls_version,
+  userIdentity.arn AS principal_arn,
+  userAgent,
+  eventName,
+  COALESCE(errorCode, 'ALLOWED') AS result,
+  COUNT(*) AS event_count
+FROM cloudtrail_logs.organization_events
+WHERE eventTime >= '2026-09-01T00:00:00Z'
+  AND eventTime <  '2026-09-30T00:00:00Z'
+  AND recipientAccountId IN ('111122223333', '444455556666')
+  AND eventSource = 's3.amazonaws.com'
+  AND tlsDetails.tlsVersion IS NOT NULL
+  AND tlsDetails.tlsVersion <> 'TLSv1.3'
+GROUP BY 1, 2, 3, 4, 5
+ORDER BY event_count DESC
+LIMIT 1000;
+```
+
+The `userAgent` column shows which SDK or client needs upgrading.
+
+**CT.S3.PV.5**: possible plain-HTTP requests. CloudTrail has no field that marks HTTP directly, so this query lists requests from non-AWS-service callers that have no TLS details. As noted in section 2, missing TLS details are not proof of HTTP. Confirm each caller with its owner.
+
+```sql
+SELECT
+  userIdentity.arn AS principal_arn,
+  userIdentity.invokedBy AS invoked_by_service,
+  userAgent,
+  sourceIPAddress,
+  eventName,
+  COALESCE(errorCode, 'ALLOWED') AS result,
+  COUNT(*) AS event_count
+FROM cloudtrail_logs.organization_events
+WHERE eventTime >= '2026-09-01T00:00:00Z'
+  AND eventTime <  '2026-09-30T00:00:00Z'
+  AND recipientAccountId IN ('111122223333', '444455556666')
+  AND eventSource = 's3.amazonaws.com'
+  AND tlsDetails.tlsVersion IS NULL
+  AND userIdentity.type <> 'AWSService'
+GROUP BY 1, 2, 3, 4, 5, 6
+ORDER BY event_count DESC
+LIMIT 1000;
+```
+
+**CT.S3.PV.6**: uploads that did not name a KMS key in the request. The query also shows the encryption S3 recorded in the response, where available. An upload without a key ID in the request is still allowed if the bucket's default encryption is SSE-KMS, so check each bucket with `get-bucket-encryption` (see section 2).
+
+```sql
+SELECT
+  json_extract_scalar(requestParameters, '$.bucketName') AS bucket_name,
+  userIdentity.arn AS principal_arn,
+  userIdentity.invokedBy AS invoked_by_service,
+  eventName,
+  json_extract_scalar(responseElements, '$["x-amz-server-side-encryption"]') AS encryption_applied,
+  COALESCE(errorCode, 'ALLOWED') AS result,
+  COUNT(*) AS event_count
+FROM cloudtrail_logs.organization_events
+WHERE eventTime >= '2026-09-01T00:00:00Z'
+  AND eventTime <  '2026-09-30T00:00:00Z'
+  AND recipientAccountId IN ('111122223333', '444455556666')
+  AND eventSource = 's3.amazonaws.com'
+  AND eventName IN ('PutObject', 'CreateMultipartUpload')
+  AND json_extract_scalar(requestParameters, '$["x-amz-server-side-encryption-aws-kms-key-id"]') IS NULL
+GROUP BY 1, 2, 3, 4, 5, 6
+ORDER BY event_count DESC
+LIMIT 1000;
+```
+
+Unlike the identity-perimeter controls, this control has no exception for AWS services. Uploads from services such as CloudTrail and AWS Config (`invoked_by_service`) are denied too, unless the bucket defaults to SSE-KMS or its ARN is in `s3_sse_kms_exempted_resource_arns`.
+
+### After rollout: find RCP denials
+
+After you attach the RCPs, search for access-denied errors. For services that include policy details in access-denied messages, the message names the policy type, for example `... with an explicit deny in a resource control policy`. That wording separates RCP denials from other failures. A service that returns only a generic `AccessDenied` won't match this filter, so also review any new `AccessDenied` errors since the attachment time.
+
+With the AWS CLI (management events only), repeat for each control's event source or event name:
+
+```sh
+ct_lookup EventSource kms.amazonaws.com | grep -i 'resource control policy'
+```
+
+With Athena (management and data events):
+
+```sql
+SELECT
+  eventTime,
+  eventSource,
+  eventName,
+  recipientAccountId AS resource_account_id,
+  userIdentity.arn AS principal_arn,
+  errorCode,
+  errorMessage
+FROM cloudtrail_logs.organization_events
+WHERE eventTime >= '2026-09-30T00:00:00Z'
+  AND recipientAccountId IN ('111122223333', '444455556666')
+  AND errorMessage LIKE '%resource control policy%'
+ORDER BY eventTime DESC
+LIMIT 1000;
+```
+
+Set the start time to when the policies were attached. Match each denial to a control by the event source and the checks above, then either fix the caller or add a targeted exemption.
 
 ## Review and report
 
