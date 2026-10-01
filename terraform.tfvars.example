@@ -16,6 +16,16 @@ target_ids = ["ou-xxxx-xxxxxxxx"]
 #   "CT.S3.PV.2"  = ["arn:aws:iam::*:role/PresignedUrlGenerator"]
 # }
 
+# Optional organization-wide perimeter: denies principals outside the org in every service listed
+# in full_org_restrict_services. Off by default; read the README first. Federation (SAML, OIDC,
+# IAM Identity Center) is not affected. Exemptions go under the "RCPFullOrgRestrict" key above.
+# enable_rcp_full_org_restrict = true
+# full_org_restrict_services   = ["kms", "s3", "sqs", "secretsmanager", "dynamodb", "opensearch", "events", "servicediscovery", "cloudtrail-data", "codeartifact", "codebuild", "codecommit", "inspector-scan", "ecr-public", "ecr", "autoscaling", "firehose", "logs", "cloudsearch", "dsql", "appstream", "aoss", "swf", "appconfig", "fms", "xray", "wafv2"]
+
+# Let resources tagged BypassRCP = True skip every control (S3 buckets also need ABAC on).
+# Anyone who can tag a resource can set it. Read the README first.
+# enable_rcp_bypass_tag = true
+
 # Buckets/objects allowed to receive uploads without SSE-KMS (CT.S3.PV.6).
 # s3_sse_kms_exempted_resource_arns = ["arn:aws:s3:::legacy-bucket/*"]
 

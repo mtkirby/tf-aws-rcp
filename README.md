@@ -20,7 +20,7 @@ These are self-managed RCPs created with `aws_organizations_policy`. They are no
 
 ## Why two policies instead of nine
 
-A root, OU or account can have at most **5 RCPs** attached, and `RCPFullAWSAccess` takes one of those slots. So the nine controls are packed into two policies, with one statement per control. Each policy must stay under 5,120 characters. The defaults render to about 1.3 KB and 0.6 KB, and a precondition fails the plan if exemptions push a policy over the limit.
+A root, OU or account can have at most **5 RCPs** attached, and `RCPFullAWSAccess` takes one of those slots. So the nine controls are packed into two policies, with one statement per control. Each policy must stay under 5,120 characters. The defaults render to about 1.3 KB and 0.6 KB, and a precondition fails the plan if exemptions push a policy over the limit. If you also enable the optional [RCPFullOrgRestrict](#optional-rcpfullorgrestrict) policy, each target carries four RCPs, which still leaves one slot free.
 
 The optional attachment-capacity preflight checks the saved plan against the RCPs currently attached directly to each changed target. It requires Python 3.10+ and AWS CLI credentials with permission to call `organizations:ListPoliciesForTarget`. It cannot prevent a concurrent process from attaching another RCP after the check, so serialize organization-policy applies.
 
@@ -49,6 +49,77 @@ The optional attachment-capacity preflight checks the saved plan against the RCP
   *Why:* over plain HTTP, object data travels unencrypted and can be read or altered in transit. Frameworks such as PCI DSS and HIPAA expect encryption in transit.
 - **CT.S3.PV.6**: requires object uploads to use SSE-KMS encryption. An upload must specify a KMS key or go to a bucket whose default encryption is SSE-KMS.
   *Why:* SSE-KMS adds a second permission check, because reading an object also needs `kms:Decrypt` on the key. CloudTrail logs every use of the key, and disabling the key cuts off access to the data.
+
+## Optional: RCPFullOrgRestrict
+
+`RCPFullOrgRestrict` is a third policy that is **off by default**. It is not a Control Tower control. It applies the same identity perimeter as the controls above to many more services: any principal outside your organization (and outside `additional_trusted_organization_ids`) is denied unless it is an AWS service or listed in its exemptions.
+
+```hcl
+enable_rcp_full_org_restrict = true
+
+exempted_principal_arns = {
+  "RCPFullOrgRestrict" = ["arn:aws:iam::*:role/BreakGlass"]
+}
+```
+
+It attaches to the same `target_ids` as the other policies. To run it on its own, also set `enabled_controls = []`.
+
+**Why it lists services instead of using `"Action": "*"`.** A customer-managed RCP can't use `"*"` as its whole `Action`, and RCPs don't support `NotAction` ([RCP syntax](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_rcps_syntax.html)). So the policy denies `<service>:*` for each prefix in `full_org_restrict_services`. The default is the AWS [list of services that support RCPs](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_rcps.html#rcp-supported-services) as of 2026-10-01, with these exceptions:
+
+- **STS** is limited to `sts:AssumeRole` and `sts:SetContext`, the same actions as CT.STS.PV.1. `sts:AssumeRoleWithSAML`, `sts:AssumeRoleWithWebIdentity`, `sts:TagSession` and `sts:SetSourceIdentity` don't use AWS credentials, so they carry no organization ID and would be denied. Leaving them out keeps SAML federation (including IAM Identity Center), OIDC roles such as GitHub Actions, and EKS service-account roles working. The variable rejects `"sts"` so `sts:*` can't be added by mistake.
+- **`cognito-identity`, `cognito-idp`, `rolesanywhere` and `signin`** are left out as a precaution. Their callers often have no AWS organization identity: app users signing in to Cognito, IAM Roles Anywhere sessions that authenticate with an X.509 certificate, and console or CLI sign-in. I haven't confirmed which of their calls RCPs evaluate, so test them on a sandbox account before adding them.
+- **`ecr-public`** is left out because public repositories are meant to be pulled by anyone.
+
+Other things to know:
+
+- **Anonymous access.** Unsigned requests carry no organization ID, so anonymous access to resources in the listed services is denied. To allow it for a specific resource, such as a public S3 bucket, use the [bypass tag](#optional-bypass-tag-bypassrcp).
+- **Exemptions don't carry over.** A deny in any attached RCP wins. A principal exempted from CT.STS.PV.1 is still denied by RCPFullOrgRestrict unless it's also listed under `exempted_principal_arns["RCPFullOrgRestrict"]`. Trusted organizations are different: `additional_trusted_organization_ids` is shared, so a trusted organization is allowed by both policies.
+- **New services aren't covered automatically.** When AWS adds RCP support to a service, add its prefix to `full_org_restrict_services`.
+
+With this policy enabled, the identity-perimeter policy adds no further restriction, because its statements are a subset of this one. It's kept so you can turn this policy off again without losing the perimeter for the five core services.
+
+## Optional: bypass tag (BypassRCP)
+
+Set `enable_rcp_bypass_tag = true` to let individual resources opt out of every control in this repo. Each RCP statement gets one more condition, `"StringNotEquals": { "aws:ResourceTag/BypassRCP": "True" }`, so a resource tagged `BypassRCP = True` is skipped by all of them: the identity perimeter, the S3 request rules and RCPFullOrgRestrict.
+
+```hcl
+enable_rcp_bypass_tag = true
+```
+
+**Where it works.** The bypass only works where the service puts the resource's tags into the request as `aws:ResourceTag`. Checked against the [AWS service reference data](https://docs.aws.amazon.com/service-authorization/latest/reference/service-reference.html) on 2026-10-01:
+
+| Service | What to tag | Covered actions |
+|---|---|---|
+| KMS | The key | All key actions |
+| Secrets Manager | The secret | All secret actions |
+| SQS | The queue | All queue actions |
+| STS | The role | `AssumeRole` and `SetContext` |
+| S3 | The bucket, with ABAC turned on | Bucket and object actions, except Object Lambda and multi-Region access points |
+| Other `full_org_restrict_services` | Varies | Check the service before relying on it |
+
+Where the tag isn't exposed, the condition key is missing, `StringNotEquals` still matches, and the deny applies. The bypass fails closed.
+
+**It bypasses everything.** A principal exemption opens a resource to one caller. A tagged resource is open to any caller its own resource policy allows, including anonymous callers and principals in other organizations, and it also loses the TLS 1.3, HTTPS, header-auth and SSE-KMS requirements. Keep it for resources that need it, such as a public S3 bucket or a queue shared with a partner. If you know the outside principal's ARN, `exempted_principal_arns` is narrower.
+
+**Example: a public S3 bucket.** Run in the bucket's account:
+
+```sh
+aws s3api put-bucket-abac --bucket my-public-bucket --abac-status Status=Enabled
+
+aws s3control tag-resource \
+  --account-id 111122223333 \
+  --resource-arn arn:aws:s3:::my-public-bucket \
+  --tags Key=BypassRCP,Value=True
+```
+
+S3 only evaluates bucket tags once ABAC is on ([S3 bucket tagging](https://docs.aws.amazon.com/AmazonS3/latest/userguide/buckets-tagging.html)). These are recent APIs (S3 ABAC launched in November 2025), so use a current AWS CLI. Also:
+
+- **The RCPs don't grant access.** The bucket policy must still allow public reads, and S3 Block Public Access must not block them.
+- **Website endpoints work.** CT.S3.PV.5 is bypassed too, so the HTTP-only S3 website endpoint is reachable.
+- **ABAC blocks `PutBucketTagging`.** Once ABAC is on, the bucket's tags must be changed with `TagResource`. Check that whatever manages the bucket's tags (Terraform, CloudFormation, scripts) supports that first.
+- **The value is case-sensitive.** Only `True` bypasses; `true` doesn't.
+
+**Who can set the tag.** Anyone with permission to tag a resource can bypass the RCPs for it (for an S3 bucket, they also need permission to turn on ABAC). Nothing in this repo limits who that is. To keep an eye on it, look in CloudTrail for tagging calls (`TagResource`, `TagQueue`, `TagRole`, `CreateBucket` and similar) whose request parameters include `BypassRCP`.
 
 ## Prerequisites
 
@@ -84,10 +155,13 @@ Pass `--profile PROFILE` to use a named AWS CLI profile. The script exits nonzer
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `target_ids` | required | Root, OU or account IDs to attach both policies to |
+| `target_ids` | required | Root, OU or account IDs to attach the policies to |
 | `enabled_controls` | all nine | Control IDs to include. Trim this list to stage a rollout |
 | `additional_trusted_organization_ids` | `[]` | Other orgs trusted by the identity-perimeter controls |
-| `exempted_principal_arns` | `{}` | Per-control `ExemptedPrincipalArns`, keyed by control ID |
+| `enable_rcp_full_org_restrict` | `false` | Also create and attach the optional `RCPFullOrgRestrict` policy |
+| `full_org_restrict_services` | RCP-supported services as of 2026-10-01, with exceptions | Service prefixes `RCPFullOrgRestrict` covers (see above) |
+| `enable_rcp_bypass_tag` | `false` | Let resources tagged `BypassRCP = True` skip every control |
+| `exempted_principal_arns` | `{}` | Per-control `ExemptedPrincipalArns`, keyed by control ID or `RCPFullOrgRestrict` |
 | `s3_sse_kms_exempted_resource_arns` | `[]` | `ExemptedResourceArns` for CT.S3.PV.6 |
 | `policy_name_prefix` | `ct-rcp` | Policy name prefix |
 | `tags` | `{}` | Tags for the policies |

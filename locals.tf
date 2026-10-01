@@ -1,4 +1,7 @@
 locals {
+  # Control Tower control IDs plus the optional organization-wide policy.
+  enabled_ids = setunion(var.enabled_controls, var.enable_rcp_full_org_restrict ? ["RCPFullOrgRestrict"] : [])
+
   organization_ids = distinct(concat([data.aws_organizations_organization.current.id], var.additional_trusted_organization_ids))
 
   # Condition shared by the "principals in my organization, or an AWS service" controls.
@@ -6,6 +9,19 @@ locals {
     BoolIfExists            = { "aws:PrincipalIsAWSService" = "false" }
     StringNotEqualsIfExists = { "aws:PrincipalOrgID" = local.organization_ids }
   }
+
+  # With var.enable_rcp_bypass_tag, every statement skips resources tagged BypassRCP = True. Where a
+  # service doesn't expose aws:ResourceTag for a request (or an S3 bucket doesn't have ABAC on), the
+  # key is absent, StringNotEquals still matches and the deny applies: the bypass fails closed.
+  bypass_tag_condition = { for k, v in { "aws:ResourceTag/BypassRCP" = "True" } : k => v if var.enable_rcp_bypass_tag }
+
+  # RCPs reject "Action": "*" and don't support NotAction, so RCPFullOrgRestrict lists each service.
+  # STS is limited to the two actions CT.STS.PV.1 covers: AssumeRoleWithSAML, AssumeRoleWithWebIdentity,
+  # TagSession and SetSourceIdentity carry no aws:PrincipalOrgID, and denying them breaks federation.
+  full_org_restrict_actions = concat(
+    [for svc in var.full_org_restrict_services : "${svc}:*"],
+    ["sts:AssumeRole", "sts:SetContext"],
+  )
 
   # Statement bodies taken from the AWS Control Tower RCP templates:
   # https://docs.aws.amazon.com/controltower/latest/controlreference/list-of-rcp-controls.html
@@ -55,6 +71,13 @@ locals {
       Action    = ["sts:AssumeRole", "sts:SetContext"]
       Condition = local.org_perimeter_condition
     }
+    # Not a Control Tower control: the same identity perimeter applied to every service in
+    # var.full_org_restrict_services. Off by default (var.enable_rcp_full_org_restrict).
+    "RCPFullOrgRestrict" = {
+      Sid       = "RCPFullOrgRestrict"
+      Action    = local.full_org_restrict_actions
+      Condition = local.org_perimeter_condition
+    }
   }
 
   # Full statements with the template's optional parameters applied. Keys whose value is null
@@ -68,16 +91,22 @@ locals {
         Action      = s.Action
         NotResource = id == "CT.S3.PV.6" && length(var.s3_sse_kms_exempted_resource_arns) > 0 ? var.s3_sse_kms_exempted_resource_arns : null
         Resource    = id == "CT.S3.PV.6" && length(var.s3_sse_kms_exempted_resource_arns) > 0 ? null : "*"
-        Condition = merge(s.Condition, {
-          for op, cond in { ArnNotLike = { "aws:PrincipalArn" = lookup(var.exempted_principal_arns, id, []) } } :
-          op => cond if length(lookup(var.exempted_principal_arns, id, [])) > 0
-        })
+        Condition = merge(
+          s.Condition,
+          # Adds the bypass tag to any StringNotEquals block the statement already has (keys are ANDed).
+          { for op, cond in { StringNotEquals = merge(try(s.Condition.StringNotEquals, {}), local.bypass_tag_condition) } : op => cond if length(cond) > 0 },
+          {
+            for op, cond in { ArnNotLike = { "aws:PrincipalArn" = lookup(var.exempted_principal_arns, id, []) } } :
+            op => cond if length(lookup(var.exempted_principal_arns, id, [])) > 0
+          },
+        )
       } : k => v if v != null
     }
   }
 
   # An account/OU can have at most 5 RCPs attached (including RCPFullAWSAccess), so the nine
-  # controls are packed into two policies rather than one policy per control.
+  # controls are packed into two policies rather than one policy per control. With the optional
+  # RCPFullOrgRestrict policy enabled, a target carries four RCPs.
   policy_groups = {
     "identity-perimeter" = {
       description = "Only principals in the organization, or AWS services, may access KMS, S3, Secrets Manager, SQS and STS resources."
@@ -87,14 +116,18 @@ locals {
       description = "S3 requests must use header auth, TLS 1.3, HTTPS, and SSE-KMS on upload."
       controls    = ["CT.S3.PV.2", "CT.S3.PV.3", "CT.S3.PV.5", "CT.S3.PV.6"]
     }
+    "RCPFullOrgRestrict" = {
+      description = "Only principals in the organization, or AWS services, may access resources in the listed RCP-supported services."
+      controls    = ["RCPFullOrgRestrict"]
+    }
   }
 
   policies = {
     for name, group in local.policy_groups : name => {
       description = group.description
-      controls    = [for id in group.controls : id if contains(var.enabled_controls, id)]
+      controls    = [for id in group.controls : id if contains(local.enabled_ids, id)]
     }
-    if length([for id in group.controls : id if contains(var.enabled_controls, id)]) > 0
+    if length([for id in group.controls : id if contains(local.enabled_ids, id)]) > 0
   }
 
   policy_content = {

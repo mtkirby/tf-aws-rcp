@@ -153,6 +153,175 @@ run "subset_of_controls_skips_empty_policy" {
   }
 }
 
+run "full_org_restrict_off_by_default" {
+  command = plan
+
+  assert {
+    condition     = !contains(keys(aws_organizations_policy.this), "RCPFullOrgRestrict")
+    error_message = "RCPFullOrgRestrict must not be created unless enabled."
+  }
+}
+
+run "full_org_restrict_renders_template" {
+  command = plan
+
+  variables {
+    enable_rcp_full_org_restrict = true
+    full_org_restrict_services   = ["kms", "s3", "dynamodb"]
+  }
+
+  # The requested template, with Action listing services because RCPs reject "Action": "*".
+  assert {
+    condition = jsondecode(aws_organizations_policy.this["RCPFullOrgRestrict"].content) == {
+      Version = "2012-10-17"
+      Statement = [{
+        Sid       = "RCPFullOrgRestrict"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = ["kms:*", "s3:*", "dynamodb:*", "sts:AssumeRole", "sts:SetContext"]
+        Resource  = "*"
+        Condition = {
+          BoolIfExists            = { "aws:PrincipalIsAWSService" = "false" }
+          StringNotEqualsIfExists = { "aws:PrincipalOrgID" = ["o-exampleorg1"] }
+        }
+      }]
+    }
+    error_message = "RCPFullOrgRestrict does not match the expected template."
+  }
+
+  assert {
+    condition     = keys(aws_organizations_policy_attachment.this) == ["RCPFullOrgRestrict/r-ab12", "identity-perimeter/r-ab12", "s3-data-protection/r-ab12"]
+    error_message = "All three policies should attach to the target."
+  }
+}
+
+run "full_org_restrict_default_services_allow_federation" {
+  command = plan
+
+  variables {
+    enable_rcp_full_org_restrict = true
+  }
+
+  assert {
+    condition     = !contains(jsondecode(aws_organizations_policy.this["RCPFullOrgRestrict"].content).Statement[0].Action, "*")
+    error_message = "RCPs reject \"Action\": \"*\"."
+  }
+
+  assert {
+    condition = length(setintersection(
+      jsondecode(aws_organizations_policy.this["RCPFullOrgRestrict"].content).Statement[0].Action,
+      ["sts:*", "sts:AssumeRoleWithSAML", "sts:AssumeRoleWithWebIdentity", "sts:TagSession", "sts:SetSourceIdentity", "cognito-identity:*", "cognito-idp:*", "rolesanywhere:*", "signin:*"]
+    )) == 0
+    error_message = "Federation and sign-in actions must not be denied."
+  }
+
+  assert {
+    condition     = length(aws_organizations_policy.this["RCPFullOrgRestrict"].content) <= 5120
+    error_message = "The default service list must fit in one RCP."
+  }
+}
+
+run "full_org_restrict_exemption_and_standalone" {
+  command = plan
+
+  variables {
+    enable_rcp_full_org_restrict = true
+    enabled_controls             = []
+    exempted_principal_arns = {
+      "RCPFullOrgRestrict" = ["arn:aws:iam::*:role/BreakGlass"]
+    }
+  }
+
+  assert {
+    condition     = keys(aws_organizations_policy.this) == ["RCPFullOrgRestrict"]
+    error_message = "With no CT controls enabled, only RCPFullOrgRestrict should be created."
+  }
+
+  assert {
+    condition     = jsondecode(aws_organizations_policy.this["RCPFullOrgRestrict"].content).Statement[0].Condition.ArnNotLike == { "aws:PrincipalArn" = ["arn:aws:iam::*:role/BreakGlass"] }
+    error_message = "RCPFullOrgRestrict should carry its exempted principals."
+  }
+}
+
+run "bypass_tag_off_by_default" {
+  command = plan
+
+  variables {
+    enable_rcp_full_org_restrict = true
+  }
+
+  assert {
+    condition     = alltrue([for c in values(local.policy_content) : !strcontains(c, "BypassRCP")])
+    error_message = "Without the option, no policy should mention the bypass tag."
+  }
+}
+
+run "bypass_tag_applies_to_every_statement" {
+  command = plan
+
+  variables {
+    enable_rcp_full_org_restrict = true
+    full_org_restrict_services   = ["kms", "s3"]
+    enable_rcp_bypass_tag        = true
+    exempted_principal_arns = {
+      "CT.STS.PV.1" = ["arn:aws:iam::*:role/VendorAccess"]
+    }
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for c in values(local.policy_content) : [
+        for st in jsondecode(c).Statement : st.Condition.StringNotEquals["aws:ResourceTag/BypassRCP"] == "True"
+      ]
+    ]))
+    error_message = "Every statement should skip resources tagged BypassRCP = True."
+  }
+
+  assert {
+    condition = jsondecode(aws_organizations_policy.this["identity-perimeter"].content).Statement[0].Condition == {
+      BoolIfExists            = { "aws:PrincipalIsAWSService" = "false" }
+      StringNotEqualsIfExists = { "aws:PrincipalOrgID" = ["o-exampleorg1"] }
+      StringNotEquals         = { "aws:ResourceTag/BypassRCP" = "True" }
+    }
+    error_message = "CT.KMS.PV.7 should gain only the bypass condition."
+  }
+
+  assert {
+    condition     = jsondecode(aws_organizations_policy.this["s3-data-protection"].content).Statement[0].Condition.StringNotEquals == { "s3:authType" = "REST-HEADER", "aws:ResourceTag/BypassRCP" = "True" }
+    error_message = "CT.S3.PV.2 should keep its own StringNotEquals key alongside the bypass tag."
+  }
+
+  assert {
+    condition     = jsondecode(aws_organizations_policy.this["identity-perimeter"].content).Statement[4].Condition.ArnNotLike == { "aws:PrincipalArn" = ["arn:aws:iam::*:role/VendorAccess"] }
+    error_message = "Principal exemptions should still render with the bypass tag on."
+  }
+
+  assert {
+    condition     = length(aws_organizations_policy_attachment.this) == 3
+    error_message = "The bypass tag should not change the RCP attachments."
+  }
+}
+
+run "rejects_sts_in_full_org_services" {
+  command = plan
+
+  variables {
+    full_org_restrict_services = ["kms", "sts"]
+  }
+
+  expect_failures = [var.full_org_restrict_services]
+}
+
+run "rejects_wildcard_full_org_service" {
+  command = plan
+
+  variables {
+    full_org_restrict_services = ["*"]
+  }
+
+  expect_failures = [var.full_org_restrict_services]
+}
+
 run "rejects_unknown_control" {
   command = plan
 

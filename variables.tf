@@ -42,6 +42,44 @@ variable "enabled_controls" {
   }
 }
 
+variable "enable_rcp_full_org_restrict" {
+  description = "Create and attach RCPFullOrgRestrict, which denies every action on every RCP-supported service to principals outside the organization (AWS services excepted). Off by default; see the README before enabling."
+  type        = bool
+  default     = false
+}
+
+variable "full_org_restrict_services" {
+  description = "Service prefixes that RCPFullOrgRestrict denies to principals outside the organization, each rendered as \"<prefix>:*\". STS is always included, limited to sts:AssumeRole and sts:SetContext, so it must not be listed here. The default is the AWS list of RCP-supported services as of 2026-10-01, minus cognito-identity, cognito-idp, rolesanywhere, signin and ecr-public (see the README)."
+  type        = list(string)
+  default = [
+    "aoss", "appconfig", "appstream", "autoscaling", "autoscaling-plans", "budgets", "clouddirectory",
+    "cloudfront", "cloudsearch", "cloudtrail-data", "codeartifact", "codebuild", "codecommit",
+    "codepipeline", "comprehend", "comprehendmedical", "compute-optimizer", "cost-optimization-hub",
+    "dax", "dsql", "dynamodb", "ecr", "events", "firehose", "fis", "fms", "gamelift", "health",
+    "inspector-scan", "kendra", "kinesisvideo", "kms", "logs", "memorydb", "networkmonitor",
+    "notifications", "opensearch", "pca-connector-ad", "personalize", "polly", "pricing",
+    "resource-groups", "s3", "secretsmanager", "servicediscovery", "sqs", "support", "swf",
+    "textract", "timestream-influxdb", "transcribe", "transfer", "translate", "wafv2", "workspaces",
+    "xray",
+  ]
+
+  validation {
+    condition     = length(var.full_org_restrict_services) > 0 && alltrue([for svc in var.full_org_restrict_services : can(regex("^[a-z0-9-]+$", svc))])
+    error_message = "List at least one service, each as a lowercase service prefix such as \"s3\" or \"dynamodb\" (no \"*\" or \":\")."
+  }
+
+  validation {
+    condition     = !contains(var.full_org_restrict_services, "sts")
+    error_message = "Don't list \"sts\": sts:* would deny SAML and OIDC federation. RCPFullOrgRestrict always covers sts:AssumeRole and sts:SetContext."
+  }
+}
+
+variable "enable_rcp_bypass_tag" {
+  description = "Let resources tagged BypassRCP = True skip every RCP statement in this repo. Works only where the service exposes aws:ResourceTag for the request; S3 buckets also need ABAC enabled. Elsewhere the RCPs still apply."
+  type        = bool
+  default     = false
+}
+
 variable "additional_trusted_organization_ids" {
   description = "Organization IDs, besides this one, whose principals may access resources under the identity-perimeter controls (the OrganizationIds parameter)."
   type        = list(string)
@@ -54,7 +92,7 @@ variable "additional_trusted_organization_ids" {
 }
 
 variable "exempted_principal_arns" {
-  description = "Per-control ExemptedPrincipalArns, keyed by control ID. Wildcards are allowed (ArnNotLike), e.g. arn:aws:iam::*:role/BreakGlass."
+  description = "Per-control ExemptedPrincipalArns, keyed by control ID or \"RCPFullOrgRestrict\". Wildcards are allowed (ArnNotLike), e.g. arn:aws:iam::*:role/BreakGlass."
   type        = map(list(string))
   default     = {}
 
@@ -62,10 +100,10 @@ variable "exempted_principal_arns" {
     condition = alltrue([
       for id in keys(var.exempted_principal_arns) : contains([
         "CT.KMS.PV.7", "CT.S3.PV.2", "CT.S3.PV.3", "CT.S3.PV.4", "CT.S3.PV.5", "CT.S3.PV.6",
-        "CT.SECRETSMANAGER.PV.1", "CT.SQS.PV.1", "CT.STS.PV.1",
+        "CT.SECRETSMANAGER.PV.1", "CT.SQS.PV.1", "CT.STS.PV.1", "RCPFullOrgRestrict",
       ], id)
     ])
-    error_message = "exempted_principal_arns keys must be supported control IDs."
+    error_message = "exempted_principal_arns keys must be supported control IDs or \"RCPFullOrgRestrict\"."
   }
 }
 
