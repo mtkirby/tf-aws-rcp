@@ -18,6 +18,36 @@ The statements follow the [AWS Control Tower RCP templates](https://docs.aws.ama
 
 These are self-managed RCPs created with `aws_organizations_policy`. They are not enabled through the Control Tower control API, so Control Tower does not show them as enabled controls. Don't also enable the same controls in Control Tower for the same OUs, because you would get duplicate policies.
 
+## Terraform diagrams
+
+These diagrams trace values from inputs through locals, rendered JSON, policies,
+attachments, and outputs. Arrows represent value dependencies, not file execution
+order. They describe the source code rather than an applied deployment.
+
+### Value flow
+
+![Terraform value flow](docs/diagrams/terraform-value-flow.svg)
+
+[Edit the draw.io source](docs/diagrams/terraform-value-flow.drawio)
+
+### Statement conditions
+
+![Statement conditions and exemptions](docs/diagrams/statement-conditions.svg)
+
+[Edit the draw.io source](docs/diagrams/statement-conditions.drawio)
+
+### Resources and outputs
+
+![Resource expansion and outputs](docs/diagrams/resources-and-outputs.svg)
+
+[Edit the draw.io source](docs/diagrams/resources-and-outputs.drawio)
+
+Open the `.drawio` files in [diagrams.net](https://app.diagrams.net/) to edit
+shapes, labels, and connections. The SVG previews also contain editable diagram
+data and use explicit line breaks to keep Terraform identifiers intact.
+After editing, export an SVG with **Include a copy of my diagram** enabled and
+update both files in the same commit as the related Terraform change.
+
 ## Why two policies instead of nine
 
 A root, OU or account can have at most **5 RCPs** attached, and `RCPFullAWSAccess` takes one of those slots. So the nine controls are packed into two policies, with one statement per control. Each policy must stay under 5,120 characters. The defaults render to about 1.3 KB and 0.6 KB, and a precondition fails the plan if exemptions push a policy over the limit. If you also enable the optional [RCPFullOrgRestrict](#optional-rcpfullorgrestrict) policy, each target carries four RCPs, which still leaves one slot free.
